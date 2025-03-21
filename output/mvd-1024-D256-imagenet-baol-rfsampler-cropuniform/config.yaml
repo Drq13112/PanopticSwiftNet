@@ -1,0 +1,458 @@
+CUDNN_BENCHMARK: false
+DATALOADER:
+  ASPECT_RATIO_GROUPING: true
+  FILTER_EMPTY_ANNOTATIONS: true
+  NUM_WORKERS: 10
+  REPEAT_SQRT: true
+  REPEAT_THRESHOLD: 0.1
+  SAMPLER_TRAIN: RepeatFactorTrainingSampler
+DATASETS:
+  PRECOMPUTED_PROPOSAL_TOPK_TEST: 1000
+  PRECOMPUTED_PROPOSAL_TOPK_TRAIN: 2000
+  PROPOSAL_FILES_TEST: []
+  PROPOSAL_FILES_TRAIN: []
+  TEST:
+  - mvd_panoptic_val
+  TRAIN:
+  - mvd_panoptic_train
+FLOAT32_PRECISION: ''
+GLOBAL:
+  HACK: 1.0
+INPUT:
+  CLASS_BALANCED_CROPS: true
+  CROP:
+    ENABLED: true
+    SINGLE_CATEGORY_MAX_AREA: 1.0
+    SIZE:
+    - 1024
+    - 1024
+    TYPE: absolute
+  FORMAT: RGB
+  GAUSSIAN_SIGMA: 10
+  IGNORE_CROWD_IN_SEMANTIC: false
+  IGNORE_STUFF_IN_OFFSET: true
+  MASK_FORMAT: polygon
+  MAX_SIZE_TEST: 2048
+  MAX_SIZE_TRAIN: 4096
+  MIN_SIZE_TEST: 2048
+  MIN_SIZE_TRAIN:
+  - 960
+  - 1024
+  - 1088
+  - 1152
+  - 1216
+  - 1280
+  - 1344
+  - 1408
+  - 1472
+  - 1536
+  - 1600
+  - 1664
+  - 1728
+  - 1792
+  - 1856
+  - 1920
+  - 1984
+  - 2048
+  - 2112
+  MIN_SIZE_TRAIN_SAMPLING: choice
+  RANDOM_FLIP: horizontal
+  SMALL_INSTANCE_AREA: 4096
+  SMALL_INSTANCE_WEIGHT: 3
+  TRT_CROP_H: 1152
+  TRT_CROP_W: 1920
+MODEL:
+  ANCHOR_GENERATOR:
+    ANGLES:
+    - - -90
+      - 0
+      - 90
+    ASPECT_RATIOS:
+    - - 0.5
+      - 1.0
+      - 2.0
+    NAME: DefaultAnchorGenerator
+    OFFSET: 0.0
+    SIZES:
+    - - 32
+      - 64
+      - 128
+      - 256
+      - 512
+  BACKBONE:
+    FREEZE_AT: 0
+    NAME: resnet
+  DEVICE: cuda
+  FPN:
+    FUSE_TYPE: sum
+    IN_FEATURES: []
+    NORM: ''
+    OUT_CHANNELS: 256
+  INS_EMBED_HEAD:
+    ASPP_CHANNELS: 256
+    ASPP_DILATIONS:
+    - 6
+    - 12
+    - 18
+    ASPP_DROPOUT: 0.1
+    CENTER_LOSS_WEIGHT: 200.0
+    COMMON_STRIDE: 4
+    CONVS_DIM: 128
+    HEAD_CHANNELS: 32
+    IN_FEATURES:
+    - res2
+    - res3
+    - res5
+    NAME: PanopticDeepLabInsEmbedHead
+    NORM: SyncBN
+    OFFSET_LOSS_WEIGHT: 0.01
+    PROJECT_CHANNELS:
+    - 32
+    - 64
+    PROJECT_FEATURES:
+    - res2
+    - res3
+  KEYPOINT_ON: false
+  LOAD_PROPOSALS: false
+  MASK_ON: false
+  META_ARCHITECTURE: PanopticSwiftNet
+  PANOPTIC_DEEPLAB:
+    BENCHMARK_NETWORK_SPEED: false
+    CENTER_THRESHOLD: 0.1
+    NMS_KERNEL: 7
+    PREDICT_INSTANCES: false
+    SIZE_DIVISIBILITY: 128
+    STUFF_AREA: 4096
+    TOP_K_INSTANCE: 200
+    USE_DEPTHWISE_SEPARABLE_CONV: false
+  PANOPTIC_FPN:
+    COMBINE:
+      ENABLED: true
+      INSTANCES_CONFIDENCE_THRESH: 0.5
+      OVERLAP_THRESH: 0.5
+      STUFF_AREA_LIMIT: 4096
+    INSTANCE_LOSS_WEIGHT: 1.0
+  PANOPTIC_SWIFTNET:
+    BENCHMARK_NETWORK_SPEED: false
+    CENTER_THRESHOLD: 0.1
+    DECODER:
+      COMMON_STRIDE: 4
+      DECODER_CHANNELS: 256
+      FEATURE_KEY: res5_2
+      INS_DECODER_CHANNELS: 256
+      IN_CHANNELS: 512
+      LOW_LEVEL_CHANNELS:
+      - - 512
+        - 256
+      - - 512
+        - 256
+        - 128
+      - - 256
+        - 128
+        - 64
+      - - 128
+        - 64
+      - 64
+      LOW_LEVEL_KEY:
+      - - res5o_1
+        - res4o_2
+      - - res5o_0
+        - res4o_1
+        - res3o_2
+      - - res4o_0
+        - res3o_1
+        - res2o_2
+      - - res3o_0
+        - res2o_1
+      - res2o_0
+      NUM_LEVELS: 3
+      SPP_DROP_RATE: 0.0
+      SPP_GRIDS:
+      - - 8
+        - 4
+        - 2
+        - 1
+      SPP_SQUARE_GRID:
+      - false
+      TYPE: SHARED
+      USE_BN: true
+    FINAL_UP_ALIGN_CORNERS: false
+    INSTANCE_LOSS:
+      BAOL:
+        ENABLED: true
+        WEIGHTS_PATH: /home/shared/datasets/mapillary-vistas-official/training/v1.2/offset_weightsSR_8_0_4_0_2_0_1_0/
+      CENTER_LOSS_WEIGHT: 200.0
+      OFFSET_LOSS_WEIGHT: 0.0025
+    MEMORY_EFFICIENT: false
+    NMS_KERNEL: 7
+    NUM_CLASSES: 65
+    PREDICT_INSTANCES: true
+    PRETRAINED_BACKBONE: true
+    SEMANTIC_LOSS:
+      LOSS_TOP_K: 1.0
+      TYPE: hard_pixel_mining
+    SIZE_DIVISIBILITY: 128
+    STUFF_AREA: 4096
+    SYNCBN: true
+    TOP_K_INSTANCE: 200
+  PIXEL_MEAN:
+  - 0.485
+  - 0.456
+  - 0.406
+  PIXEL_STD:
+  - 0.229
+  - 0.224
+  - 0.225
+  PROPOSAL_GENERATOR:
+    MIN_SIZE: 0
+    NAME: RPN
+  RESNETS:
+    DEFORM_MODULATED: false
+    DEFORM_NUM_GROUPS: 1
+    DEFORM_ON_PER_STAGE:
+    - false
+    - false
+    - false
+    - false
+    DEPTH: 18
+    NORM: FrozenBN
+    NUM_GROUPS: 1
+    OUT_FEATURES:
+    - res2
+    - res3
+    - res5
+    RES2_OUT_CHANNELS: 256
+    RES4_DILATION: 1
+    RES5_DILATION: 2
+    RES5_MULTI_GRID:
+    - 1
+    - 2
+    - 4
+    STEM_OUT_CHANNELS: 64
+    STEM_TYPE: deeplab
+    STRIDE_IN_1X1: true
+    WIDTH_PER_GROUP: 64
+  RETINANET:
+    BBOX_REG_LOSS_TYPE: smooth_l1
+    BBOX_REG_WEIGHTS: &id002
+    - 1.0
+    - 1.0
+    - 1.0
+    - 1.0
+    FOCAL_LOSS_ALPHA: 0.25
+    FOCAL_LOSS_GAMMA: 2.0
+    IN_FEATURES:
+    - p3
+    - p4
+    - p5
+    - p6
+    - p7
+    IOU_LABELS:
+    - 0
+    - -1
+    - 1
+    IOU_THRESHOLDS:
+    - 0.4
+    - 0.5
+    NMS_THRESH_TEST: 0.5
+    NORM: ''
+    NUM_CLASSES: 80
+    NUM_CONVS: 4
+    PRIOR_PROB: 0.01
+    SCORE_THRESH_TEST: 0.05
+    SMOOTH_L1_LOSS_BETA: 0.1
+    TOPK_CANDIDATES_TEST: 1000
+  ROI_BOX_CASCADE_HEAD:
+    BBOX_REG_WEIGHTS:
+    - &id001
+      - 10.0
+      - 10.0
+      - 5.0
+      - 5.0
+    - - 20.0
+      - 20.0
+      - 10.0
+      - 10.0
+    - - 30.0
+      - 30.0
+      - 15.0
+      - 15.0
+    IOUS:
+    - 0.5
+    - 0.6
+    - 0.7
+  ROI_BOX_HEAD:
+    BBOX_REG_LOSS_TYPE: smooth_l1
+    BBOX_REG_LOSS_WEIGHT: 1.0
+    BBOX_REG_WEIGHTS: *id001
+    CLS_AGNOSTIC_BBOX_REG: false
+    CONV_DIM: 256
+    FC_DIM: 1024
+    FED_LOSS_FREQ_WEIGHT_POWER: 0.5
+    FED_LOSS_NUM_CLASSES: 50
+    NAME: ''
+    NORM: ''
+    NUM_CONV: 0
+    NUM_FC: 0
+    POOLER_RESOLUTION: 14
+    POOLER_SAMPLING_RATIO: 0
+    POOLER_TYPE: ROIAlignV2
+    SMOOTH_L1_BETA: 0.0
+    TRAIN_ON_PRED_BOXES: false
+    USE_FED_LOSS: false
+    USE_SIGMOID_CE: false
+  ROI_HEADS:
+    BATCH_SIZE_PER_IMAGE: 512
+    IN_FEATURES:
+    - res4
+    IOU_LABELS:
+    - 0
+    - 1
+    IOU_THRESHOLDS:
+    - 0.5
+    NAME: Res5ROIHeads
+    NMS_THRESH_TEST: 0.5
+    NUM_CLASSES: 80
+    POSITIVE_FRACTION: 0.25
+    PROPOSAL_APPEND_GT: true
+    SCORE_THRESH_TEST: 0.05
+  ROI_KEYPOINT_HEAD:
+    CONV_DIMS:
+    - 512
+    - 512
+    - 512
+    - 512
+    - 512
+    - 512
+    - 512
+    - 512
+    LOSS_WEIGHT: 1.0
+    MIN_KEYPOINTS_PER_IMAGE: 1
+    NAME: KRCNNConvDeconvUpsampleHead
+    NORMALIZE_LOSS_BY_VISIBLE_KEYPOINTS: true
+    NUM_KEYPOINTS: 17
+    POOLER_RESOLUTION: 14
+    POOLER_SAMPLING_RATIO: 0
+    POOLER_TYPE: ROIAlignV2
+  ROI_MASK_HEAD:
+    CLS_AGNOSTIC_MASK: false
+    CONV_DIM: 256
+    NAME: MaskRCNNConvUpsampleHead
+    NORM: ''
+    NUM_CONV: 0
+    POOLER_RESOLUTION: 14
+    POOLER_SAMPLING_RATIO: 0
+    POOLER_TYPE: ROIAlignV2
+  RPN:
+    BATCH_SIZE_PER_IMAGE: 256
+    BBOX_REG_LOSS_TYPE: smooth_l1
+    BBOX_REG_LOSS_WEIGHT: 1.0
+    BBOX_REG_WEIGHTS: *id002
+    BOUNDARY_THRESH: -1
+    CONV_DIMS:
+    - -1
+    HEAD_NAME: StandardRPNHead
+    IN_FEATURES:
+    - res4
+    IOU_LABELS:
+    - 0
+    - -1
+    - 1
+    IOU_THRESHOLDS:
+    - 0.3
+    - 0.7
+    LOSS_WEIGHT: 1.0
+    NMS_THRESH: 0.7
+    POSITIVE_FRACTION: 0.5
+    POST_NMS_TOPK_TEST: 1000
+    POST_NMS_TOPK_TRAIN: 2000
+    PRE_NMS_TOPK_TEST: 6000
+    PRE_NMS_TOPK_TRAIN: 12000
+    SMOOTH_L1_BETA: 0.0
+  SEM_SEG_HEAD:
+    ASPP_CHANNELS: 256
+    ASPP_DILATIONS:
+    - 6
+    - 12
+    - 18
+    ASPP_DROPOUT: 0.1
+    COMMON_STRIDE: 4
+    CONVS_DIM: 256
+    HEAD_CHANNELS: 256
+    IGNORE_VALUE: 255
+    IN_FEATURES:
+    - res2
+    - res3
+    - res5
+    LOSS_TOP_K: 0.2
+    LOSS_TYPE: hard_pixel_mining
+    LOSS_WEIGHT: 1.0
+    NAME: PanopticDeepLabSemSegHead
+    NORM: SyncBN
+    NUM_CLASSES: 19
+    PROJECT_CHANNELS:
+    - 32
+    - 64
+    PROJECT_FEATURES:
+    - res2
+    - res3
+    USE_DEPTHWISE_SEPARABLE_CONV: false
+  WEIGHTS: pretrained_models/psn-r18-mvd.pth
+OUTPUT_DIR: ./output/mvd-1024-D256-imagenet-baol-rfsampler-cropuniform/
+SEED: -1
+SOLVER:
+  AMP:
+    ENABLED: true
+  BASE_LR: 0.0005
+  BASE_LR_END: 0.0
+  BIAS_LR_FACTOR: 1.0
+  CHECKPOINT_PERIOD: 5000
+  CLIP_GRADIENTS:
+    CLIP_TYPE: value
+    CLIP_VALUE: 1.0
+    ENABLED: false
+    NORM_TYPE: 2.0
+  GAMMA: 0.1
+  IMS_PER_BATCH: 16
+  LR_SCHEDULER_NAME: WarmupPolyLR
+  MAX_ITER: 200000
+  MOMENTUM: 0.9
+  NESTEROV: false
+  NUM_DECAYS: 3
+  OPTIMIZER: ADAM
+  POLY_LR_CONSTANT_ENDING: 0.0
+  POLY_LR_POWER: 0.9
+  REFERENCE_WORLD_SIZE: 0
+  RESCALE_INTERVAL: false
+  STEPS:
+  - 30000
+  WARMUP_FACTOR: 0.001
+  WARMUP_ITERS: 1000
+  WARMUP_METHOD: linear
+  WEIGHT_DECAY: 0.0
+  WEIGHT_DECAY_BIAS: 0.0
+  WEIGHT_DECAY_NORM: 0.0
+TEST:
+  AUG:
+    ENABLED: false
+    FLIP: true
+    MAX_SIZE: 4000
+    MIN_SIZES:
+    - 400
+    - 500
+    - 600
+    - 700
+    - 800
+    - 900
+    - 1000
+    - 1100
+    - 1200
+  DETECTIONS_PER_IMAGE: 100
+  EVAL_PERIOD: 0
+  EXPECTED_RESULTS: []
+  KEYPOINT_OKS_SIGMAS: []
+  PRECISE_BN:
+    ENABLED: false
+    NUM_ITER: 200
+VERSION: 2
+VIS_PERIOD: 0
