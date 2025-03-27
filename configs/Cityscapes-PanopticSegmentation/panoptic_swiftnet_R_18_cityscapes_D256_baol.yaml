@@ -14,7 +14,7 @@ MODEL:
     STUFF_AREA: 2048
     NMS_KERNEL: 7
     SIZE_DIVISIBILITY: 128
-    NUM_CLASSES: 19
+    NUM_CLASSES: 7
     SYNCBN: True
     FINAL_UP_ALIGN_CORNERS: True
     SEMANTIC_LOSS:
@@ -25,7 +25,7 @@ MODEL:
       OFFSET_LOSS_WEIGHT: 0.0025
       BAOL:
         ENABLED: True
-        WEIGHTS_PATH: "/home/shared/datasets/cityscapes/gtFine/panoptic_train-offset_weightsSR_8_0_4_0_2_0_1_0"
+        WEIGHTS_PATH: "/home/david/Documents/Datasets/cityscapesScripts/gtFine/offset_weights"
     DECODER:
       TYPE: "SHARED"
   PANOPTIC_DEEPLAB:

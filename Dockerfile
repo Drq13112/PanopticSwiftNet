@@ -20,6 +20,8 @@ RUN useradd -m david
 # Set working directory and change ownership
 RUN chown -R david:david /home/david/
 
+RUN apt update && apt install -y nano
+
 # Switch to non-root user
 USER david
 
@@ -29,7 +31,7 @@ WORKDIR /home/david/app
 # Copy project files into the container
 COPY --chown=david . /home/david/app/
 
-RUN git clone https://github.com/Drq13112/PanopticSwiftNet.git
+#RUN git clone https://github.com/Drq13112/PanopticSwiftNet.git
 
 # Download pretrained models from Google Drive
 RUN gdown --folder https://drive.google.com/drive/folders/1Z8PTS1PwF5ol9yFdLcop5z9_la1uy67q -O /home/david/app/PanopticSwiftNet/pretrained_models/
@@ -37,31 +39,21 @@ RUN gdown --folder https://drive.google.com/drive/folders/1Z8PTS1PwF5ol9yFdLcop5
 # Upgrade pip
 RUN pip3 install --upgrade pip
 
+
+RUN pip3 install --upgrade pip setuptools
+
 # Install Detectron2 dependencies
-#RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+RUN pip3 install torch torchvision torchaudio
 
 # Install Detectron2 from the official source (latest version for CUDA 12)
 #RUN pip3 install 'git+https://github.com/facebookresearch/detectron2.git'
 
-# Install other project dependencies
-#RUN pip3 install -r requirements.txt
+RUN pip3 install git+https://github.com/cocodataset/panopticapi.git
+
+RUN pip3 install cupy
 
 # Extract dataset from a mounted directory (at runtime)
 RUN mkdir -p /home/david/app/datasets/cityscapes
-
-
-ARG CITYSCAPES_USERNAME
-ARG CITYSCAPES_PASSWORD
-# Use wget with login credentials to download the dataset
-RUN mkdir -p /home/david/app/datasets/cityscapes && \
-    cd /home/david/app/datasets/cityscapes && \
-    wget --keep-session-cookies --save-cookies=cookies.txt --post-data 'username=CITYSCAPES_USERNAME&password=CITYSCAPES_PASSWORD&submit=Login' https://www.cityscapes-dataset.com/login/ && \
-    wget --load-cookies cookies.txt --content-disposition https://www.cityscapes-dataset.com/file-handling/?packageID=1 && \
-    #wget --load-cookies cookies.txt --content-disposition https://www.cityscapes-dataset.com/file-handling/?packageID=3 && \
-    unzip gtFine_trainvaltest.zip && \
-    #unzip leftImg8bit_trainvaltest.zip && \
-    rm gtFine_trainvaltest.zip 
-    #leftImg8bit_trainvaltest.zip
 
 
 ENTRYPOINT ["/bin/bash"]

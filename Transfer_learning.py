@@ -2,8 +2,17 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
 
 """
-Panoptic-DeepLab Training Script.
-This script is a simplified version of the training script in detectron2/tools.
+Modified Panoptic-DeepLab Training Script for Transfer Learning.
+This script freezes the lower layers of the backbone and reconfigures the final 
+segmentation head to detect only 8 classes:
+  - Carretera
+  - Peatones
+  - Señales de tráfico
+  - Coches
+  - Camiones
+  - Buses
+  - Calzada
+  - Motos
 """
 
 import os
@@ -33,14 +42,8 @@ from detectron2.solver import get_default_optimizer_params
 from detectron2.solver.build import maybe_add_gradient_clipping
 from model.psn import PanopticSwiftNet
 from util import SemSegEvaluator
-
 from detectron2.engine import HookBase
-
-
-
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:256"
-torch.cuda.empty_cache()
+import csv
 
 
 def build_sem_seg_train_aug(cfg):
@@ -57,108 +60,101 @@ def build_sem_seg_train_aug(cfg):
     return augs
 
 
-class LossLogger(HookBase):
-    def after_step(self):
-        # Always print something to verify the hook is called
-        print(f"[LossLogger] After step at iter {self.trainer.iter}")
-        storage = self.trainer.storage
-        # Try to print all available keys
-        metrics = storage.latest_with_smoothing_hint()
-        print(f"[LossLogger] Available metrics: {metrics.keys()}")
-        
-        # If you have specific keys, try printing them:
-        loss_sem_seg = metrics.get("loss_sem_seg", None)
-        loss_center = metrics.get("loss_center", None)
-        loss_offset = metrics.get("loss_offset", None)
-        if loss_sem_seg is not None:
-            print(
-                f"Iter {self.trainer.iter}: loss_sem_seg={loss_sem_seg:.4f}, "
-                f"loss_center={loss_center:.4f}, loss_offset={loss_offset:.4f}"
-            )
+def to_float(x):
+    """Convert a tensor, tuple, or number to a float."""
+    if isinstance(x, torch.Tensor):
+        return x.item()
+    elif isinstance(x, (list, tuple)):
+        # If it's a tuple or list, we try to convert the first element.
+        return to_float(x[0])
+    else:
+        return float(x)
 
+class CSVWriterHook(HookBase):
+    def __init__(self, output_file):
+        self.output_file = output_file
+        # Write header
+        with open(self.output_file, mode="w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["iter", "loss_total", "loss_sem_seg", "loss_center", "loss_offset"])
+
+    def after_step(self):
+        storage = self.trainer.storage
+        iteration = self.trainer.iter
+
+        # Retrieve the losses from storage
+        # Use default value 0 if a key does not exist.
+        loss_total = storage.latest().get("total_loss", 0)
+        loss_sem_seg = storage.latest().get("loss_sem_seg", 0)
+        loss_center = storage.latest().get("loss_center", 0)
+        loss_offset = storage.latest().get("loss_offset", 0)
+
+        # Convert values to float
+        loss_total = to_float(loss_total)
+        loss_sem_seg = to_float(loss_sem_seg)
+        loss_center = to_float(loss_center)
+        loss_offset = to_float(loss_offset)
+
+        # Append the current iteration losses to the CSV file.
+        with open(self.output_file, mode="a", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([iteration, loss_total, loss_sem_seg, loss_center, loss_offset])
 class Trainer(DefaultTrainer):
     """
-    We use the "DefaultTrainer" which contains a number pre-defined logic for
-    standard training workflow. They may not work for you, especially if you
-    are working on a new research project. In that case you can use the cleaner
-    "SimpleTrainer", or write your own training loop.
+    Modified trainer for transfer learning:
+    - Freezes lower layers of the backbone.
+    - Replaces the final segmentation layer for 8 classes.
     """
-    def __init__(self, cfg):
-        super().__init__(cfg)
-        self._data_loader_iter = iter(self.data_loader)  # Initialize data loader iterator
-
-        # Ensure the model uses float32 to avoid dtype mismatch
-        #self.model = self.model.float()
-
-        # Move the model to GPU (cuda)
-        self.model = self.model.to("cuda")
-
-    # def run_step(self):
-    #     """ Custom training step with proper data loader initialization """
-    #     # assert self.model.training, "[Trainer] Model is in eval mode!"
-        
-    #     try:
-    #         data = next(self._data_loader_iter)
-    #     except StopIteration:
-    #         self._data_loader_iter = iter(self.data_loader)
-    #         data = next(self._data_loader_iter)
-
-    #     # # Move all input tensors to float32 and GPU
-    #     # for d in data:
-    #     #     for k in d:
-    #     #         if isinstance(d[k], torch.Tensor):
-    #     #             d[k] = d[k].float().to("cuda")
-    #     #     # Convert segmentation target to long (if available)
-    #     #     if "sem_seg" in d and isinstance(d["sem_seg"], torch.Tensor):
-    #     #         d["sem_seg"] = d["sem_seg"].long().to("cuda")
-
-    #     self.optimizer.zero_grad()
-    #     loss_dict = self.model(data)
-    #     print("Loss dict:", {k: v.item() for k, v in loss_dict.items()})
-    #     losses = sum(loss_dict.values())
-    #     losses.backward()
-    #     self.optimizer.step()
-
 
     @classmethod
     def build_model(cls, cfg):
-        model = super().build_model(cfg)
+        model = super().build_model(cfg).to(cfg.MODEL.DEVICE)
 
-        # Ensure segmentation head exists
+
+        # # Freeze lower layers using cfg.MODEL.BACKBONE.FREEZE_AT.
+        # # (Este ejemplo asume un backbone basado en ResNet con capas nombradas "layer1", "layer2", etc.)
+        # freeze_at = cfg.MODEL.BACKBONE.FREEZE_AT
+        # for name, param in model.backbone.named_parameters():
+        #     # Ejemplo: si freeze_at>=2, congelamos layer1
+        #     if freeze_at >= 2 and "layer1" in name:
+        #         param.requires_grad = False
+        #     # Si freeze_at>=3, se podría congelar también layer2, y así sucesivamente.
+
+
+        # Congelar parámetros del backbone        # for name, param in model.backbone.named_parameters():
+        #     param.requires_grad = False
+
+        # # Congelar parámetros del decoder
+        # for name, param in model.decoder.named_parameters():
+        #     param.requires_grad = False
+
+
+        # Verificar qué partes se actualizarán:
+        print("Parámetros que se actualizarán:")
+        for name, param in model.named_parameters():
+            if param.requires_grad:
+                print(name)
+        
+        # Reemplazar la última capa de clasificación.
         if hasattr(model.sem_seg_head, "classifier"):
             if "sem_seg" in model.sem_seg_head.classifier:
-                old_conv = model.sem_seg_head.classifier["sem_seg"][2]  # Get final Conv2D layer
-                
-                # Replace with a new Conv2D layer for 7 classes
+                old_conv = model.sem_seg_head.classifier["sem_seg"][2]  # Capa final actual
                 new_conv = torch.nn.Conv2d(
                     in_channels=old_conv.in_channels,
-                    out_channels=cfg.MODEL.PANOPTIC_SWIFTNET.NUM_CLASSES,  # 7 classes
+                    out_channels=cfg.MODEL.PANOPTIC_SWIFTNET.NUM_CLASSES,  # 8 clases
                     kernel_size=old_conv.kernel_size,
                     stride=old_conv.stride,
                     padding=old_conv.padding
                 )
-
-                # # Convert new weights and bias to float16 if using mixed precision
-                # if cfg.SOLVER.AMP.ENABLED:
-                #     model = model.half()  # Convert entire model to float16
-                #     new_conv.weight.data = new_conv.weight.data.half()  # Convert weights to fp16
-                #     if new_conv.bias is not None:
-                #         new_conv.bias.data = new_conv.bias.data.half()  # Convert bias to fp16
-
-                model.sem_seg_head.classifier["sem_seg"][2] = new_conv  # Assign new Conv2D
-
-                print(f"✅ Replaced final segmentation layer: {old_conv.out_channels} → {cfg.MODEL.PANOPTIC_SWIFTNET.NUM_CLASSES}")
-
+                # Traslada explícitamente la nueva capa a GPU:
+                new_conv = new_conv.to(next(model.parameters()).device)
+                model.sem_seg_head.classifier["sem_seg"][2] = new_conv
+                print(f"Replaced final segmentation layer: {old_conv.out_channels} -> {cfg.MODEL.PANOPTIC_SWIFTNET.NUM_CLASSES}")
         return model
+
 
     @classmethod
     def build_evaluator(cls, cfg, dataset_name, output_folder=None):
-        """
-        Create evaluator(s) for a given dataset.
-        This uses the special metadata "evaluator_type" associated with each builtin dataset.
-        For your own dataset, you can simply create an evaluator manually in your
-        script and do not have to worry about the hacky if-else logic here.
-        """
         if cfg.MODEL.PANOPTIC_DEEPLAB.BENCHMARK_NETWORK_SPEED:
             return None
         if output_folder is None:
@@ -199,23 +195,15 @@ class Trainer(DefaultTrainer):
 
     @classmethod
     def build_lr_scheduler(cls, cfg, optimizer):
-        """
-        It now calls :func:`detectron2.solver.build_lr_scheduler`.
-        Overwrite it if you'd like a different scheduler.
-        """
         return build_lr_scheduler(cfg, optimizer)
 
     @classmethod
     def build_optimizer(cls, cfg, model):
-        """
-        Build an optimizer from config.
-        """
         params = get_default_optimizer_params(
             model,
             weight_decay=cfg.SOLVER.WEIGHT_DECAY,
             weight_decay_norm=cfg.SOLVER.WEIGHT_DECAY_NORM,
         )
-
         optimizer_type = cfg.SOLVER.OPTIMIZER
         if optimizer_type == "SGD":
             return maybe_add_gradient_clipping(cfg, torch.optim.SGD)(
@@ -231,67 +219,34 @@ class Trainer(DefaultTrainer):
 
 
 def setup(args):
-    """
-    Create configs and perform basic setups.
-    """
     cfg = get_cfg()
     add_panoptic_deeplab_config(cfg)
     add_panoptic_swiftnet_config(cfg)
+    args.config_file = "configs/Cityscapes-PanopticSegmentation/panoptic_swiftnet_R_18_cityscapes_D256_baol.yaml"
     cfg.merge_from_file(args.config_file)
-    cfg.merge_from_file(args.config_file)
-    cfg.MODEL.WEIGHTS = "pretrained_models/psn-r18-city.pth"  # pre-trained weights
-    cfg.MODEL.BACKBONE.FREEZE_AT = 2  # Freeze early layers
     cfg.merge_from_list(args.opts)
-    # 🚀 Reduce image resolution to lower VRAM usage
-    cfg.INPUT.MIN_SIZE_TRAIN = (256,)  
-    cfg.INPUT.MAX_SIZE_TRAIN = 768  
-
-    # 🚀 Ensure better memory allocation for upsampling
-    cfg.MODEL.PANOPTIC_SWIFTNET.SIZE_DIVISIBILITY = 64  
-    cfg.MODEL.PANOPTIC_SWIFTNET.FINAL_UP_ALIGN_CORNERS = False  
-
-    cfg.SOLVER.IMS_PER_BATCH = 1  # Reduce batch size to prevent OOM
-    cfg.SOLVER.BASE_LR = 0.00005  # Reduce LR for stability
-
-    cfg.INPUT.MIN_SIZE_TRAIN = (512,)
-    cfg.INPUT.MAX_SIZE_TRAIN = 1024
-    #cfg.INPUT.MIN_SIZE_TRAIN_SAMPLING = "choice"
+    # Ajustes para Transfer Learning:
+    cfg.MODEL.BACKBONE.FREEZE_AT = 5  # Congela las capas inferiores; ajústalo según tus necesidades.
+    cfg.MODEL.PANOPTIC_SWIFTNET.NUM_CLASSES = 8  # 8 clases deseadas
+    cfg.SOLVER.BASE_LR = 1e-3 
     cfg.SOLVER.AMP.ENABLED = False
     cfg.MODEL.DEVICE = "cuda"
-
-    cfg.freeze()
+    #cfg.freeze()
     default_setup(cfg, args)
     return cfg
 
 
 def main(args):
     cfg = setup(args)
-
-    #  Ensure correct device
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    #  Build the model and move it to the correct device
-    model = Trainer.build_model(cfg).to(device)
-
-    #  Load pre-trained weights properly
-    checkpoint_path = cfg.MODEL.WEIGHTS  # Ensure correct path
-    checkpoint = torch.load(checkpoint_path, map_location=device)  # Load checkpoint to correct device
-
-    print("Checkpoint keys:", checkpoint.keys())
-
-    #  Convert weights to float32 if necessary
-    state_dict = {k: v.float().to(device) for k, v in checkpoint.items()}  # Move everything to same device
-
-    #  Load state dict into model
-    missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
-
-    print(f" Checkpoint loaded successfully!\nMissing keys: {missing_keys}\nUnexpected keys: {unexpected_keys}")
-
-    #  Initialize Trainer and start training
+    if args.eval_only:
+        model = Trainer.build_model(cfg)
+        DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(cfg.MODEL.WEIGHTS, resume=args.resume)
+        res = Trainer.test(cfg, model)
+        return res
     trainer = Trainer(cfg)
-    # trainer.register_hooks([LossLogger()])
-    trainer.resume_or_load(resume=args.resume)  # Resume from last checkpoint if available
-    trainer.train()  # 🚀 Start training!
+    trainer.register_hooks([CSVWriterHook(output_file="training_progress.csv")])
+    trainer.resume_or_load(resume=args.resume)
+    return trainer.train()
 
 
 if __name__ == "__main__":

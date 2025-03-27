@@ -265,6 +265,9 @@ class PanopticSwiftNet(nn.Module):
         predictions = F.interpolate(
             predictions, scale_factor=self.common_stride, mode="bilinear", align_corners=False
         )
+        # print("center_losses:")
+        # print("prediction:", predictions)
+        # print("target:", targets)
         loss = self.center_criterion(predictions, targets) * weights
         if weights.sum() > 0:
             loss = loss.sum() / weights.sum()
@@ -280,6 +283,9 @@ class PanopticSwiftNet(nn.Module):
             )
             * self.common_stride
         )
+        # print("offset_losses:")
+        # print("prediction:", predictions)
+        # print("target:", targets)
         loss = self.offset_criterion(predictions, targets) * weights
         if weights.sum() > 0:
             loss = loss.sum() / weights.sum()
@@ -292,6 +298,9 @@ class PanopticSwiftNet(nn.Module):
         predictions = F.interpolate(
             predictions, scale_factor=self.common_stride, mode="bilinear", align_corners=False
         )
+        # print("semantic_losses:")
+        # print("prediction:", predictions)
+        # print("target:", targets)
         loss = self.semantic_criterion(predictions, targets, weights)
         losses = {"loss_sem_seg": loss * self.semantic_loss_weight}
         return losses

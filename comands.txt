@@ -1,0 +1,8 @@
+
+docker build -t panoptic-training .
+
+
+docker run -it --rm --gpus all \
+    -v /home/autopia/David/PanopticSwiftNet:/home/david/app/PanopticSwiftNet \
+    -v /media/datos/David/cityscapesScripts:/home/david/app/datasets/cityscapes \
+    panoptic-training

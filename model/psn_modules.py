@@ -78,7 +78,10 @@ class FastPanopticSwiftNetHead(nn.Module):
         pred = OrderedDict()
         # build classifier
         for key in self.class_key:
+            #print(f"classifier: {self.classifier[key]}")
+            #print(f"x: {x}")
             pred[key] = self.classifier[key](x)
+        #print(f"pred in forward FastPanopticSwiftNetHead: {pred}")
         return pred
 
 

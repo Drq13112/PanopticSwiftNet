@@ -16,8 +16,10 @@ from detectron2.projects.panoptic_deeplab import add_panoptic_deeplab_config
 from detectron2.config import get_cfg
 from detectron2.engine import default_setup
 from detectron2.utils.visualizer import Visualizer
+from numba import njit
 
 MIN_AREA_THRESHOLD = 1000
+factor = 4
 
 cityscapes_class_names = np.array([
         'road', 'sidewalk', 'building', 'wall', 'fence', 'pole',
@@ -33,30 +35,56 @@ def parse_args():
     args = parser.parse_args()
     return args
 
+# def panoptic_labels_to_color(label, colormap, label_divisor):
+#     colored_label = np.zeros((label.shape[0], label.shape[1], 3), dtype=np.uint8)
+#     taken_colors = set([0, 0, 0])
+
+#     def _random_color(base, max_dist=50):
+#         new_color = base + np.random.randint(low=-max_dist, high=max_dist + 1, size=3)
+#         return tuple(np.maximum(0, np.minimum(255, new_color)))
+
+#     for lab in np.unique(label):
+#         mask = label == lab
+#         base_color = colormap[lab // label_divisor]
+#         if tuple(base_color) not in taken_colors:
+#             taken_colors.add(tuple(base_color))
+#             color = base_color
+#         else:
+#             while True:
+#                 color = _random_color(base_color)
+#                 if color not in taken_colors:
+#                     taken_colors.add(color)
+#                     break
+#         colored_label[mask] = color
+#     return colored_label
+
+
+@njit
+def panoptic_labels_to_color_numba(label, lookup):
+    h, w = label.shape
+    colored = np.empty((h, w, 3), dtype=np.uint8)
+    for i in range(h):
+        for j in range(w):
+            colored[i, j] = lookup[label[i, j]]
+    return colored
+
+# Fuera de la función, se puede crear la tabla lookup de forma vectorizada:
+def create_lookup(colormap, label_divisor, max_label):
+    lookup = np.empty((max_label + 1, 3), dtype=np.uint8)
+    for lab in range(max_label + 1):
+        # Simplemente asigna el color base (sin evitar duplicados)
+        lookup[lab] = colormap[lab // label_divisor]
+    return lookup
+
+# Uso:
 def panoptic_labels_to_color(label, colormap, label_divisor):
-    colored_label = np.zeros((label.shape[0], label.shape[1], 3), dtype=np.uint8)
-    taken_colors = set([0, 0, 0])
+    max_label = label.max()
+    lookup = create_lookup(colormap, label_divisor, max_label)
+    return panoptic_labels_to_color_numba(label, lookup)
 
-    def _random_color(base, max_dist=50):
-        new_color = base + np.random.randint(low=-max_dist, high=max_dist + 1, size=3)
-        return tuple(np.maximum(0, np.minimum(255, new_color)))
 
-    for lab in np.unique(label):
-        mask = label == lab
-        base_color = colormap[lab // label_divisor]
-        if tuple(base_color) not in taken_colors:
-            taken_colors.add(tuple(base_color))
-            color = base_color
-        else:
-            while True:
-                color = _random_color(base_color)
-                if color not in taken_colors:
-                    taken_colors.add(color)
-                    break
-        colored_label[mask] = color
-    return colored_label
 
-def process_frame(frame, transform, model, colormap, meta):
+def process_frame(frame, transform, model, colormap, meta, start_time, frame_width, frame_height):
     h, w, _ = frame.shape
     img = transform.get_transform(frame).apply_image(frame)
     model_input = [{
@@ -69,14 +97,27 @@ def process_frame(frame, transform, model, colormap, meta):
             out = model(model_input)[0]
             
     # Extraer el mapa de segmentación (panoptic_seg) y la imagen de colores
+    
     seg_map = out["panoptic_seg"][0].squeeze().cpu().numpy()
+    seg_map = cv2.resize(seg_map, (frame_width, frame_height), interpolation=cv2.INTER_NEAREST)
+    torch.cuda.synchronize()
+    inference_time_seg = (time.time() - start_time)*1000
+    print(f"Inference time seg map: {inference_time_seg:.4f} ms")
+
     preds_color = panoptic_labels_to_color(seg_map, colormap, meta.label_divisor)
+    torch.cuda.synchronize()
+    inference_time_color = (time.time() - start_time)*1000
+    print(f"Inference time color: {inference_time_color:.4f} ms")
 
     # Obtener confianza desde sem_seg
     sem_seg_logits = out["sem_seg"]
     probabilities = F.softmax(sem_seg_logits, dim=0)
     confidence_values, _ = torch.max(probabilities, dim=0)
     confidence_map = confidence_values.cpu().numpy()
+    torch.cuda.synchronize()
+    inference_time_conf = (time.time() - start_time)*1000
+    print(f"Inference time conf: {inference_time_conf:.4f} ms")
+    confidence_map = cv2.resize(confidence_map, (frame_width, frame_height), interpolation=cv2.INTER_NEAREST)
 
 
     return preds_color, seg_map, confidence_map
@@ -96,6 +137,7 @@ def setup(args):
 
 def main(args):
     cfg = setup(args)
+    torch.backends.cudnn.benchmark = True
     dataset_name = cfg.DATASETS.TEST[0]
     meta = MetadataCatalog.get(dataset_name)
     if "coco" in dataset_name or "cityscapes" in dataset_name:
@@ -128,13 +170,16 @@ def main(args):
         ret, frame = cap.read()
         if not ret:
             break
-        
+
+        torch.cuda.synchronize()
         start_time = time.time()
-        frame = cv2.resize(frame, (int(width/4), int(height/4)))
-        preds_color, seg_map,confidence_map = process_frame(frame, transform, model, colormap, meta)
-        inference_time = time.time() - start_time
+        frame = cv2.resize(frame, (int(width/factor), int(height/factor)), interpolation=cv2.INTER_NEAREST)
+        preds_color, seg_map,confidence_map = process_frame(frame, transform, model, colormap, meta, start_time, width, height)
+        torch.cuda.synchronize()
+        inference_time = (time.time() - start_time)*1000
         inference_times.append(inference_time)
-        print(f"Inference time: {inference_time:.4f} seconds per frame")
+        print(f"Inference time: {inference_time:.4f} ms")
+
         # Calcular el centroide de cada región y escribir el label
         unique_labels = np.unique(seg_map)
         for lab in unique_labels:
