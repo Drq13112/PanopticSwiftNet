@@ -137,3 +137,4 @@ dmypy.json
 output/r18-d256-cityscapes-baol/*
 pretrained_models/*
 samples/*
+samples.zip
